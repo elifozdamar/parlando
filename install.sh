@@ -2,11 +2,11 @@
 # parlando installer — macOS (Apple Silicon)
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/furkanc/parlando/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/elifozdamar/parlando/main/install.sh | sh
 #   or from a local checkout:
 #   ./install.sh
 #
-# Installs the parlando package from PyPI as a uv tool, which puts the
+# Installs the parlando package from this GitHub fork as a uv tool, which puts the
 # `parlando` command on your PATH. Uninstall:
 #   uv tool uninstall parlando
 
@@ -27,14 +27,14 @@ fi
 command -v uv >/dev/null 2>&1 || err "uv installation failed; see https://docs.astral.sh/uv/"
 
 # 2) install the package as a uv tool (creates the commands automatically).
-#    When run from a checkout, install from it; otherwise from PyPI.
+#    When run from a checkout, install from it; otherwise from this GitHub fork.
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || true)
 if [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/pyproject.toml" ]; then
     say "Installing parlando from local checkout: $SCRIPT_DIR"
     uv tool install --force --reinstall "$SCRIPT_DIR"
 else
-    say "Installing parlando from PyPI..."
-    uv tool install --force parlando
+    say "Installing parlando from elifozdamar/parlando..."
+    uv tool install --force --reinstall-package parlando "git+https://github.com/elifozdamar/parlando.git@main"
 fi
 
 # 3) PATH hint

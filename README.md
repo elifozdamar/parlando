@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/furkanc/parlando/main/assets/banner.png" alt="parlando — local voice dictation for macOS" width="720">
+  <img src="https://raw.githubusercontent.com/elifozdamar/parlando/main/assets/banner.png" alt="parlando — local voice dictation for macOS" width="720">
 </p>
 
 **Local voice dictation for macOS (Apple Silicon).** Tap a key, speak, tap
@@ -7,7 +7,7 @@ again — your words are typed into whatever window has focus. 100% on-device:
 audio never leaves your machine.
 
 [![PyPI](https://img.shields.io/pypi/v/parlando)](https://pypi.org/project/parlando/)
-[![Tests](https://github.com/furkanc/parlando/actions/workflows/tests.yml/badge.svg)](https://github.com/furkanc/parlando/actions/workflows/tests.yml)
+[![Tests](https://github.com/elifozdamar/parlando/actions/workflows/tests.yml/badge.svg)](https://github.com/elifozdamar/parlando/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ## Features
@@ -28,12 +28,12 @@ audio never leaves your machine.
   contextual fillers ("you know", "yani"), stutters and false starts, and
   fixes punctuation — guarded so it can only *edit* your words, never
   answer them.
-- **Menu bar app** — <img src="https://raw.githubusercontent.com/furkanc/parlando/main/assets/menubar-states.png" alt="menu bar icon states: idle, recording, paused" height="26" align="top"> (idle · recording · paused) with start/stop, language
+- **Menu bar app** — <img src="https://raw.githubusercontent.com/elifozdamar/parlando/main/assets/menubar-states.png" alt="menu bar icon states: idle, recording, paused" height="26" align="top"> (idle · recording · paused) with start/stop, language
   switcher, start-at-login, and a live status block: model download
   progress, ready / recording / transcribing, and permission problems with
   a one-click fix.
 - **A real app** — `parlando --install-app` creates `Parlando.app`
-  <img src="https://raw.githubusercontent.com/furkanc/parlando/main/assets/app-icon.png" alt="Parlando app icon" height="22" align="top">
+  <img src="https://raw.githubusercontent.com/elifozdamar/parlando/main/assets/app-icon.png" alt="Parlando app icon" height="22" align="top">
   so macOS asks for permissions in Parlando's name (not your terminal's) and
   keeps them across upgrades.
 - **Self-healing** — audio watchdog survives sleep/wake and device changes;
@@ -50,25 +50,19 @@ audio never leaves your machine.
 
 ## Installation
 
-parlando is on [PyPI](https://pypi.org/project/parlando/). With
-[`uv`](https://docs.astral.sh/uv/) (recommended):
+This fork adds Whisper Large-v3, a ten-minute recording limit, and temporary clipboard copy.
+The original project is [furkanc/parlando](https://github.com/furkanc/parlando).
+Install this version directly from GitHub with [`uv`](https://docs.astral.sh/uv/):
 
 ```bash
-uv tool install parlando     # puts the parlando command on your PATH
+uv tool install --force "git+https://github.com/elifozdamar/parlando.git@main"
 parlando --install-app       # creates ~/Applications/Parlando.app (see Permissions)
 ```
 
-or try it without installing anything permanent:
+To update an existing installation to the latest fork version:
 
 ```bash
-uvx parlando
-```
-
-or with pipx / pip:
-
-```bash
-pipx install parlando        # isolated install, commands on PATH
-pip install parlando         # into your current Python environment
+uv tool install --force --reinstall-package parlando "git+https://github.com/elifozdamar/parlando.git@main"
 ```
 
 <details>
@@ -76,10 +70,10 @@ pip install parlando         # into your current Python environment
 
 ```bash
 # one-liner that also installs uv if you don't have it
-curl -fsSL https://raw.githubusercontent.com/furkanc/parlando/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/elifozdamar/parlando/main/install.sh | sh
 
 # from source
-git clone https://github.com/furkanc/parlando && cd parlando
+git clone https://github.com/elifozdamar/parlando && cd parlando
 uv run parlando              # run without installing
 uv tool install .            # install commands from the checkout
 

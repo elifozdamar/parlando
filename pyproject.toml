@@ -51,9 +51,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/furkanc/parlando"
-Issues = "https://github.com/furkanc/parlando/issues"
-Changelog = "https://github.com/furkanc/parlando/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/elifozdamar/parlando"
+Issues = "https://github.com/elifozdamar/parlando/issues"
+Changelog = "https://github.com/elifozdamar/parlando/blob/main/CHANGELOG.md"
 
 [project.scripts]
 parlando = "parlando.engine:main"
