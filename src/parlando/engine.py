@@ -162,7 +162,6 @@ LOGGER = logging.getLogger("parlando")
 
 SPEECH_MODELS = {
     "Whisper Large-v3": "mlx-community/whisper-large-v3-mlx",
-    "Whisper Large-v3 Turbo": "mlx-community/whisper-large-v3-turbo",
     "Qwen3-ASR 1.7B": "mlx-community/Qwen3-ASR-1.7B-8bit",
 }
 

@@ -3,7 +3,7 @@
 ## 0.6.2+local
 
 - Add local MLX Whisper support, defaulting to Large-v3. The menu bar can
-  switch between Large-v3, Large-v3 Turbo and Qwen3-ASR between recordings.
+  switch between Large-v3 and Qwen3-ASR between recordings.
 - Raise the record-mode cap from two to ten minutes, retaining chunked
   inference and skipping fully silent chunks in long recordings.
 - Copy final dictation to the clipboard for three seconds, then restore all

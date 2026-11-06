@@ -193,7 +193,6 @@ parlando -t --vocab "MLX, PyPI"
 | Model | Size | Notes |
 |---|---|---|
 | `mlx-community/whisper-large-v3-mlx` | ~3.1 GB | **default** — preferred for Turkish with English technical terms |
-| `mlx-community/whisper-large-v3-turbo` | ~1.6 GB | faster; can lose accuracy on mixed technical speech |
 | `mlx-community/Qwen3-ASR-1.7B-8bit` | ~2.5 GB | alternative Qwen engine |
 | `mlx-community/Qwen3-ASR-0.6B-8bit` | ~700 MB | good balance for low-RAM machines |
 | `mlx-community/Qwen3-ASR-0.6B-4bit` | ~400 MB | fastest, lowest accuracy |
