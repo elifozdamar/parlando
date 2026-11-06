@@ -47,12 +47,13 @@ LAUNCH_AGENT = Path.home() / "Library" / "LaunchAgents" / f"{BUNDLE_ID}.plist"
 APP_LOG = Path.home() / "Library" / "Logs" / "parlando-app.log"
 
 LANGUAGES = {
+    "Auto (otomatik algıla)": "Auto",
     "Türkçe": "Turkish",
     "English": "English",
 }
 # Superscript badge shown next to the icon when the language is not the
 # default (Config.language).
-LANGUAGE_BADGES = {"Turkish": "ᵗʳ", "English": "ᵉⁿ"}
+LANGUAGE_BADGES = {"Auto": "ᴬ", "Turkish": "ᵗʳ", "English": "ᵉⁿ"}
 
 # Template icons (black + alpha): macOS recolors them to match the menu bar
 # in light and dark mode. Regenerate with scripts/make_icons.py.

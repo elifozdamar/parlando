@@ -1115,6 +1115,8 @@ class DictationEngine:
             ):
                 parts.append(token)
         text = "".join(parts).strip()
+        if self.cfg.language == "Auto" and "<asr_text>" in text:
+            text = text.split("<asr_text>", 1)[1].strip()
         if is_context_echo(text, ctx):
             LOGGER.info("dropped context echo: %s", text)
             return ""

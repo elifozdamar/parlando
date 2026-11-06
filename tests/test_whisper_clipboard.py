@@ -12,9 +12,10 @@ from parlando import engine
 from parlando.clipboard import TemporaryClipboard
 
 
-def test_whisper_receives_audio_language_and_transcription_task():
+@pytest.mark.parametrize("language, expected", [("Turkish", "turkish"), ("Auto", None)])
+def test_whisper_receives_audio_language_and_transcription_task(language, expected):
     calls = []
-    eng = engine.DictationEngine(engine.Config(vocab="BigQuery", normalize=False))
+    eng = engine.DictationEngine(engine.Config(language=language, vocab="BigQuery", normalize=False))
     eng.model = "/cached/whisper"
     eng._whisper = SimpleNamespace(transcribe=lambda audio, **kw: (
         calls.append((audio, kw)) or {"text": " BigQuery deployment "}
@@ -22,7 +23,7 @@ def test_whisper_receives_audio_language_and_transcription_task():
     assert eng._transcribe_blocking(np.array([16384], dtype=np.int16)) == "BigQuery deployment"
     assert calls[0][0].tolist() == [0.5]
     assert calls[0][1] == {
-        "path_or_hf_repo": "/cached/whisper", "language": "turkish",
+        "path_or_hf_repo": "/cached/whisper", "language": expected,
         "task": "transcribe", "temperature": 0.0, "verbose": None,
         "initial_prompt": "BigQuery",
     }
@@ -35,6 +36,17 @@ def test_qwen_still_uses_its_own_engine():
     eng._stt = SimpleNamespace(_suppress_output=nullcontext,
                                transcribe=lambda *a, **kw: iter(["Qwen ", "works"]))
     assert eng._transcribe_blocking(np.array([1], dtype=np.int16)) == "Qwen works"
+
+
+def test_qwen_auto_removes_detected_language_header():
+    from contextlib import nullcontext
+
+    eng = engine.DictationEngine(engine.Config(backend="qwen", language="Auto"))
+    eng._stt = SimpleNamespace(
+        _suppress_output=nullcontext,
+        transcribe=lambda *a, **kw: iter(["language English<asr", "_text>Hello world"]),
+    )
+    assert eng._transcribe_blocking(np.array([1], dtype=np.int16)) == "Hello world"
 
 
 def test_cli_selects_qwen_default_and_can_disable_clipboard():
