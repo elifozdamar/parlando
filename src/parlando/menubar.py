@@ -460,6 +460,13 @@ def run_menubar() -> int:
                 asr_name: rumps.MenuItem(label, callback=self.on_language)
                 for label, asr_name in LANGUAGES.items()
             }
+            self.model_items = {
+                model: rumps.MenuItem(label, callback=self.on_model)
+                for label, model in engine.SPEECH_MODELS.items()
+            }
+            self.clipboard_item = rumps.MenuItem(
+                "Copy to clipboard for 3 seconds", callback=self.on_clipboard
+            )
             self.menu = [
                 self.status_item,
                 self.detail_item,
@@ -467,6 +474,8 @@ def run_menubar() -> int:
                 None,
                 self.toggle_item,
                 self.enter_item,
+                self.clipboard_item,
+                {"Speech model": list(self.model_items.values())},
                 {"Language": list(self.lang_items.values())},
                 {"Vocabulary": [
                     rumps.MenuItem("Add Term…", callback=self.on_vocab_add),
@@ -523,6 +532,11 @@ def run_menubar() -> int:
                 )
             for lang, item in self.lang_items.items():
                 item.state = int(eng.cfg.language == lang)
+            self.clipboard_item.state = int(eng.cfg.copy_clipboard)
+            can_switch = eng.status.phase in ("ready", "paused")
+            for model, item in self.model_items.items():
+                item.state = int(eng.cfg.model == model)
+                item.set_callback(self.on_model if can_switch else None)
 
             view = describe_status(eng)
             if self.title != view["badge"]:
@@ -568,6 +582,21 @@ def run_menubar() -> int:
                     eng.cfg.language = lang
                     engine.LOGGER.info("language changed: %s", lang)
                     break
+
+        def on_model(self, item) -> None:
+            eng = engine_holder.get("engine")
+            if eng:
+                for model, menu_item in self.model_items.items():
+                    if menu_item is item:
+                        eng.request_model(model)
+                        break
+
+        def on_clipboard(self, _item) -> None:
+            eng = engine_holder.get("engine")
+            if eng:
+                eng.cfg.copy_clipboard = not eng.cfg.copy_clipboard
+                if not eng.cfg.copy_clipboard and eng.clipboard is not None:
+                    eng.clipboard.restore()
 
         def on_vocab_add(self, _item) -> None:
             # NOT rumps.Window: in an accessory (menu bar) app its modal can
@@ -620,6 +649,9 @@ def run_menubar() -> int:
             subprocess.run(["open", str(engine.LOG_PATH)], check=False)
 
         def on_quit(self, _item) -> None:
+            eng = engine_holder.get("engine")
+            if eng and eng.clipboard is not None:
+                eng.clipboard.restore()
             self._guard.stop()
             rumps.quit_application()
 

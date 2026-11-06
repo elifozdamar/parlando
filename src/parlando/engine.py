@@ -89,7 +89,7 @@ INT16_SCALE = 1.0 / 32768.0
 WATCHDOG_SECONDS = 5.0       # reopen the stream if no frames for this long
 AX_POLL_SECONDS = 2.0        # re-check Accessibility while it is missing
 MIC_ZERO_FRAMES = 100        # ~3s of pure zeros -> permission warning
-MAX_RECORD_SECONDS = 120     # hard safety cap for record mode
+MAX_RECORD_SECONDS = 600     # hard safety cap for record mode (10 minutes)
 CHUNK_SECONDS = 28           # model window; longer recordings are split
 ENTER_TOKEN = ""       # invisible marker for the "send" voice command
 LOG_PATH = Path.home() / "Library" / "Logs" / "parlando.log"
@@ -160,10 +160,17 @@ def is_context_echo(text: str, context: str) -> bool:
 
 LOGGER = logging.getLogger("parlando")
 
+SPEECH_MODELS = {
+    "Whisper Large-v3": "mlx-community/whisper-large-v3-mlx",
+    "Whisper Large-v3 Turbo": "mlx-community/whisper-large-v3-turbo",
+    "Qwen3-ASR 1.7B": "mlx-community/Qwen3-ASR-1.7B-8bit",
+}
+
 
 @dataclass
 class Config:
-    model: str = "mlx-community/Qwen3-ASR-1.7B-8bit"
+    model: str = SPEECH_MODELS["Whisper Large-v3"]
+    backend: str = "whisper"
     language: str = "Turkish"
     device: int | None = None
     interval: float = 0.5        # partial ASR cadence (s), stream mode
@@ -173,6 +180,7 @@ class Config:
     normalize: bool = True
     send_enter: bool = False
     pipe: bool = False           # print to stdout instead of typing
+    copy_clipboard: bool = True  # copy final text, then restore after 3 seconds
     # Single key names (alt_r, cmd_r, ctrl_r, shift_r) mean SINGLE TAP
     # (the pattern commercial dictation apps use); pynput combos such as
     # "<ctrl>+<alt>+d" also work.
@@ -227,6 +235,7 @@ def human_bytes(n: int) -> str:
 # Files a model download needs; the same patterns stt.py / mlx_lm use, so
 # the pre-download here makes their own snapshot_download a cache hit.
 ASR_MODEL_PATTERNS = ["*.json", "*.safetensors", "*.model", "*.txt"]
+WHISPER_MODEL_PATTERNS = ["*.json", "*.npz", "*.safetensors"]
 LLM_MODEL_PATTERNS = ["*.json", "*.safetensors", "*.py", "tokenizer.model",
                       "*.tiktoken", "*.txt", "*.jsonl"]
 
@@ -831,6 +840,9 @@ class DictationEngine:
         self.tokenizer = None
         self.feature_extractor = None
         self._stt = None
+        self._whisper = None
+        self.clipboard = None
+        self._pending_model = None
         self.llm = None            # polish LLM (loaded only with cfg.polish)
         self.llm_tokenizer = None
 
@@ -959,6 +971,8 @@ class DictationEngine:
 
     def toggle_record(self) -> None:
         """Record-mode hotkey: start recording / stop and type."""
+        if self.status.phase in ("downloading", "loading"):
+            return
         if self.recording:
             self.recording = False
             self._rec_finalize = True
@@ -1081,6 +1095,14 @@ class DictationEngine:
         audio = audio_int16.astype(np.float32) * INT16_SCALE
         if self.cfg.normalize:
             audio = self._normalize_audio(audio)
+        if self.cfg.backend == "whisper":
+            language = None if self.cfg.language == "Auto" else self.cfg.language.lower()
+            result = self._whisper.transcribe(
+                audio, path_or_hf_repo=self.model, language=language,
+                task="transcribe", temperature=0.0, verbose=None,
+                initial_prompt=", ".join(self.vocab_terms) or None,
+            )
+            return result["text"].strip()
         ctx = vocab_context(list(self.vocab_terms))
         parts = []
         with self._stt._suppress_output():
@@ -1098,6 +1120,18 @@ class DictationEngine:
             LOGGER.info("dropped context echo: %s", text)
             return ""
         return text
+
+    def _copy_output(self, text: str) -> None:
+        if self.cfg.copy_clipboard and self.clipboard is not None and text:
+            try:
+                self.clipboard.copy(text)
+            except Exception as exc:  # noqa: BLE001 — typing must survive clipboard failures
+                self._err(f"Clipboard: {exc!r}")
+
+    def request_model(self, model: str) -> None:
+        """Queue model changes on the engine thread, between dictations."""
+        if self.loop is not None:
+            self.loop.call_soon_threadsafe(setattr, self, "_pending_model", model)
 
     async def _asr(self, audio_int16: np.ndarray) -> str:
         """ASR; an error must never kill the loop."""
@@ -1262,7 +1296,12 @@ class DictationEngine:
 
     async def _transcribe_record(self, audio: np.ndarray) -> None:
         words: list[str] = []
-        for chunk in self._split_audio(audio):
+        chunks = self._split_audio(audio)
+        for chunk in chunks:
+            # Long recordings may contain whole silent chunks. Whisper can
+            # invent text for them even when the recording as a whole has speech.
+            if len(chunks) > 1 and not self._recording_has_speech(chunk):
+                continue
             text = await self._asr(chunk)
             if text:
                 words.extend(self._clean_words(text))
@@ -1305,6 +1344,8 @@ class DictationEngine:
                 sys.stdout.write(printable + "\n")
                 sys.stdout.flush()
         self.total_words += len(words)
+        if not self.cfg.pipe:
+            self._copy_output(typed_text)
 
     async def _emit_partial(self) -> None:
         audio = np.concatenate(self.utt)
@@ -1356,12 +1397,14 @@ class DictationEngine:
                     sys.stdout.write(printable + "\n")
                     sys.stdout.flush()
             self.total_words += len(words)
+            if not self.cfg.pipe:
+                self._copy_output(render_typing(" ".join(words)))
 
         self.committer.reset()
 
     # -- setup / main loop ----------------------------------------------------
 
-    async def _ensure_model(self, repo_id: str, patterns: list[str], label: str) -> None:
+    async def _ensure_model(self, repo_id: str, patterns: list[str], label: str) -> str:
         """Download `repo_id` if it is not cached, reporting progress.
 
         Later loaders call snapshot_download themselves; after this it is a
@@ -1371,12 +1414,11 @@ class DictationEngine:
         from huggingface_hub import snapshot_download
 
         if Path(repo_id).exists():
-            return
+            return repo_id
         try:
-            await asyncio.to_thread(
+            return await asyncio.to_thread(
                 snapshot_download, repo_id, allow_patterns=patterns, local_files_only=True
             )
-            return
         except Exception:  # noqa: BLE001 — not (fully) cached: download
             pass
 
@@ -1395,24 +1437,40 @@ class DictationEngine:
                     if st.total else "")
             self._status(f"⬇ downloading {label}{pct}{size}")
             await asyncio.sleep(0.3)
-        await task  # re-raise download errors
+        path = await task  # re-raise download errors
         # hf_xet serves some chunks from its local cache without a transfer
         # update, so the counter can stop short of the total; it is done.
         self.status.downloaded = self.status.total
         self._info(f"Downloaded {label} {name}.")
+        return path
 
-    async def _load_models(self) -> None:
-        await self._ensure_model(self.cfg.model, ASR_MODEL_PATTERNS, "speech model")
+    async def _load_speech_model(self) -> None:
+        self._set_phase("loading", f"speech model · {short_model_name(self.cfg.model)}")
+        patterns = WHISPER_MODEL_PATTERNS if self.cfg.backend == "whisper" else ASR_MODEL_PATTERNS
+        path = await self._ensure_model(self.cfg.model, patterns, "speech model")
         self._info(f"Loading model: {self.cfg.model}...")
         self._set_phase("loading", f"speech model · {short_model_name(self.cfg.model)}")
-        from parlando import stt
+        if self.cfg.backend == "whisper":
+            import mlx_whisper
 
-        self._stt = stt
-        self.model, self.tokenizer, self.feature_extractor = await asyncio.to_thread(
-            stt.load_qwen3_asr, self.cfg.model
-        )
+            self._whisper = mlx_whisper
+            self._stt = None
+            self.model = path
+            self.tokenizer = self.feature_extractor = None
+        else:
+            from parlando import stt
+
+            self._whisper = None
+            self._stt = stt
+            self.model, self.tokenizer, self.feature_extractor = await asyncio.to_thread(
+                stt.load_qwen3_asr, path
+            )
         warm = (np.random.randn(SAMPLE_RATE) * 100).astype(np.int16)
-        await self._asr(warm)
+        # Loading failures must surface before the app announces readiness.
+        await asyncio.to_thread(self._transcribe_blocking, warm)
+
+    async def _load_models(self) -> None:
+        await self._load_speech_model()
 
         if self.cfg.silero:
             try:
@@ -1542,6 +1600,13 @@ class DictationEngine:
         await self._load_models()
         if not self.cfg.pipe:
             self.typist = make_typist()
+            if self.cfg.copy_clipboard:
+                from parlando.clipboard import TemporaryClipboard
+
+                try:
+                    self.clipboard = TemporaryClipboard()
+                except Exception as exc:  # noqa: BLE001
+                    self._err(f"Clipboard unavailable: {exc!r}")
         self._check_permissions()
         self._hotkey = self._setup_hotkey()
 
@@ -1580,6 +1645,22 @@ class DictationEngine:
             while not stop_event.is_set():
                 # Every iteration is guarded: one error cannot stop dictation.
                 try:
+                    if (self._pending_model is not None and not self.recording
+                            and not self._rec_finalize and not self.finalize_pending
+                            and not self.vad.in_speech):
+                        requested = self._pending_model
+                        self._pending_model = None
+                        if requested != self.cfg.model:
+                            previous = (self.cfg.model, self.cfg.backend)
+                            self.cfg.model = requested
+                            self.cfg.backend = "whisper" if "whisper" in requested.lower() else "qwen"
+                            try:
+                                await self._load_speech_model()
+                            except Exception as exc:  # noqa: BLE001
+                                self._err(f"Model switch failed: {exc!r}; restoring previous model")
+                                self.cfg.model, self.cfg.backend = previous
+                                await self._load_speech_model()
+                            self._set_phase("paused" if self.paused else "ready")
                     try:
                         frame = await asyncio.wait_for(self.queue.get(), timeout=0.1)
                     except TimeoutError:
@@ -1634,6 +1715,8 @@ class DictationEngine:
                     self._err("internal error (continuing):\n" + traceback.format_exc())
                     await asyncio.sleep(0.2)
         finally:
+            if self.clipboard is not None:
+                self.clipboard.restore()
             if self._hotkey is not None:
                 try:
                     self._hotkey.stop()
@@ -1698,6 +1781,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="record: tap-speak-tap, typed in one go (default, most "
                         "robust). stream: always listening, word by word.")
     g.add_argument("--model", default=Config.model, help="ASR model")
+    g.add_argument("--backend", choices=["whisper", "qwen"], default=None,
+                   help="ASR engine; inferred from --model for Hugging Face model names")
+    g.add_argument("--no-clipboard", action="store_true",
+                   help="Do not temporarily copy final dictation to the clipboard")
     g.add_argument("--language", default=Config.language,
                    help=f"Language (default: {Config.language}; e.g. English, German)")
     g.add_argument("--device", type=int, default=None, help="Input device index")
@@ -1770,8 +1857,12 @@ def list_devices() -> None:
 
 
 def config_from_args(args: argparse.Namespace) -> Config:
+    model = args.model
+    if args.backend == "qwen" and model == Config.model:
+        model = SPEECH_MODELS["Qwen3-ASR 1.7B"]
     return Config(
-        model=args.model,
+        model=model,
+        backend=args.backend or ("whisper" if "whisper" in model.lower() else "qwen"),
         language=args.language,
         device=args.device,
         interval=args.interval,
@@ -1781,6 +1872,7 @@ def config_from_args(args: argparse.Namespace) -> Config:
         normalize=not args.no_normalize,
         send_enter=args.enter,
         pipe=args.pipe,
+        copy_clipboard=not args.no_clipboard,
         hotkey=None if args.no_hotkey else args.hotkey,
         commands=not args.no_commands,
         cleanup=not args.no_cleanup,
