@@ -4,6 +4,7 @@ import objc
 from AppKit import (
     NSBeep,
     NSButton,
+    NSColor,
     NSControlSizeSmall,
     NSEvent,
     NSEventTrackingRunLoopMode,
@@ -88,6 +89,7 @@ class MenuControls(NSObject):
     def make_checkbox(self, title, frame, action):
         button = NSButton.alloc().initWithFrame_(frame)
         button.setButtonType_(NSSwitchButton)
+        button.setContentTintColor_(NSColor.systemGrayColor())
         button.setTitle_(title)
         button.setFont_(NSFont.menuFontOfSize_(0))
         button.setTarget_(self)
@@ -126,6 +128,7 @@ class MenuControls(NSObject):
         if eng:
             eng.cfg.send_enter = bool(sender.state())
             self.save()
+            self.refresh()
 
     def toggleCopy_(self, sender):
         eng = self.get_engine()
