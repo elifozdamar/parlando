@@ -33,6 +33,12 @@ def label(text, frame):
     return field
 
 
+class CheckboxLabel(NSTextField):
+    def hitTest_(self, point):
+        # The checkbox extends behind its label, so the entire title stays clickable.
+        return None
+
+
 class MenuControls(NSObject):
     def init(self):
         self = objc.super(MenuControls, self).init()
@@ -90,10 +96,18 @@ class MenuControls(NSObject):
         button = NSButton.alloc().initWithFrame_(frame)
         button.setButtonType_(NSSwitchButton)
         button.setContentTintColor_(NSColor.systemGrayColor())
-        button.setTitle_(title)
+        button.setTitle_("")
+        button.setAccessibilityLabel_(title)
         button.setFont_(NSFont.menuFontOfSize_(0))
         button.setTarget_(self)
         button.setAction_(action)
+        # NSButton's content tint also affects its title. Draw the title as an
+        # independent native label so only the checkbox uses the gray tint.
+        text = CheckboxLabel.labelWithString_(title)
+        text.setFrame_(((20, 0), (frame[1][0] - 20, frame[1][1])))
+        text.setFont_(NSFont.menuFontOfSize_(0))
+        text.setTextColor_(NSColor.labelColor())
+        button.addSubview_(text)
         return button
 
     @objc.python_method
