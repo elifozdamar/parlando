@@ -49,6 +49,27 @@ def test_qwen_auto_removes_detected_language_header():
     assert eng._transcribe_blocking(np.array([1], dtype=np.int16)) == "Hello world"
 
 
+def test_hotkey_change_restores_previous_listener_on_failure():
+    eng = engine.DictationEngine(engine.Config())
+    eng.status.phase = "ready"
+    events = []
+    eng._hotkey = SimpleNamespace(stop=lambda: events.append("stopped"))
+    restored = object()
+    results = iter([None, restored])
+    eng._setup_hotkey = lambda: next(results)
+    eng._replace_hotkey("cmd_r")
+    assert events == ["stopped"]
+    assert eng.cfg.hotkey == "alt_r" and eng._hotkey is restored
+
+
+def test_hotkey_change_does_not_interrupt_recording():
+    eng = engine.DictationEngine(engine.Config())
+    eng.status.phase = "recording"
+    eng._hotkey = SimpleNamespace(stop=lambda: pytest.fail("listener stopped during recording"))
+    eng._replace_hotkey("cmd_r")
+    assert eng.cfg.hotkey == "alt_r"
+
+
 def test_cli_selects_qwen_default_and_can_disable_clipboard():
     args = engine.build_arg_parser().parse_args(["-t", "--backend", "qwen", "--no-clipboard"])
     cfg = engine.config_from_args(args)
@@ -178,6 +199,15 @@ def test_clipboard_restores_all_previous_representations(clipboard):
     assert board.items[0].data == {"text": b"dictation"}
     value.restore()
     assert board.items[0].data == {"text": b"original", "image": b"image data"}
+
+
+def test_engine_uses_custom_clipboard_duration(clipboard):
+    value, board = clipboard
+    eng = engine.DictationEngine(engine.Config(clipboard_seconds=5))
+    eng.clipboard = value
+    eng._copy_output("dictation")
+    assert board.items[0].data == {"text": b"dictation"}
+    assert value._timer.interval == 5
 
 
 def test_clipboard_preserves_user_copy(clipboard):

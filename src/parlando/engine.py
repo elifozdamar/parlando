@@ -179,7 +179,8 @@ class Config:
     normalize: bool = True
     send_enter: bool = False
     pipe: bool = False           # print to stdout instead of typing
-    copy_clipboard: bool = True  # copy final text, then restore after 3 seconds
+    copy_clipboard: bool = True  # copy final text, then restore the previous clipboard
+    clipboard_seconds: float = 3.0
     # Single key names (alt_r, cmd_r, ctrl_r, shift_r) mean SINGLE TAP
     # (the pattern commercial dictation apps use); pynput combos such as
     # "<ctrl>+<alt>+d" also work.
@@ -1125,6 +1126,7 @@ class DictationEngine:
     def _copy_output(self, text: str) -> None:
         if self.cfg.copy_clipboard and self.clipboard is not None and text:
             try:
+                self.clipboard.duration = self.cfg.clipboard_seconds
                 self.clipboard.copy(text)
             except Exception as exc:  # noqa: BLE001 — typing must survive clipboard failures
                 self._err(f"Clipboard: {exc!r}")
@@ -1133,6 +1135,22 @@ class DictationEngine:
         """Queue model changes on the engine thread, between dictations."""
         if self.loop is not None:
             self.loop.call_soon_threadsafe(setattr, self, "_pending_model", model)
+
+    def request_hotkey(self, hotkey: str) -> None:
+        if self.loop is not None:
+            self.loop.call_soon_threadsafe(self._replace_hotkey, hotkey)
+
+    def _replace_hotkey(self, hotkey: str) -> None:
+        if self.status.phase not in ("ready", "paused") or hotkey == self.cfg.hotkey:
+            return
+        previous = self.cfg.hotkey
+        if self._hotkey is not None:
+            self._hotkey.stop()
+        self.cfg.hotkey = hotkey
+        self._hotkey = self._setup_hotkey()
+        if self._hotkey is None:
+            self.cfg.hotkey = previous
+            self._hotkey = self._setup_hotkey()
 
     async def _asr(self, audio_int16: np.ndarray) -> str:
         """ASR; an error must never kill the loop."""
@@ -1601,13 +1619,12 @@ class DictationEngine:
         await self._load_models()
         if not self.cfg.pipe:
             self.typist = make_typist()
-            if self.cfg.copy_clipboard:
-                from parlando.clipboard import TemporaryClipboard
+            from parlando.clipboard import TemporaryClipboard
 
-                try:
-                    self.clipboard = TemporaryClipboard()
-                except Exception as exc:  # noqa: BLE001
-                    self._err(f"Clipboard unavailable: {exc!r}")
+            try:
+                self.clipboard = TemporaryClipboard(duration=self.cfg.clipboard_seconds)
+            except Exception as exc:  # noqa: BLE001
+                self._err(f"Clipboard unavailable: {exc!r}")
         self._check_permissions()
         self._hotkey = self._setup_hotkey()
 

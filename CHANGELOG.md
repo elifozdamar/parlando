@@ -2,6 +2,8 @@
 
 ## 0.6.2+local
 
+- Add menu inputs for the recording hotkey and clipboard duration; remember
+  menu preferences across restarts and use English language-menu labels.
 - Expose automatic language detection in the menu for Whisper and Qwen3-ASR.
 - Add local MLX Whisper support, defaulting to Large-v3. The menu bar can
   switch between Large-v3 and Qwen3-ASR between recordings.

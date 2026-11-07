@@ -18,9 +18,13 @@ audio never leaves your machine.
   (the same pattern superwhisper and Wispr Flow use). No always-on mic.
 - **Types anywhere** — text is delivered as native keyboard events (Quartz
   CGEvent unicode), so it works in any app, editor, terminal, or chat box.
-- **Multilingual** — Turkish by default; select **Language → Auto (otomatik algıla)**
-  to detect the spoken language, or select Türkçe / English to fix it.
-  Switching needs no model reload. Language selection lasts until the app exits.
+- **Multilingual** — Turkish by default; select **Language → Auto (detect language)**
+  to detect the spoken language, or select Turkish / English to fix it.
+  Switching needs no model reload. Menu language selection is remembered across restarts.
+- **Menu preferences** — use **Change recording hotkey…** to enter a shortcut
+  (for example `Command+Shift+D` or `Right Option`). **Clipboard duration…**
+  accepts a number of seconds, such as `5`; copying still has its own on/off toggle.
+  The hotkey, clipboard duration, copy toggle, language and Enter preference are saved locally.
 - **Voice commands** — "nokta", "virgül", "soru işareti", "yeni satır",
   "gönder" (presses Enter); the English set ("period", "comma", "question
   mark", "new line", "send") is active with `--language English`.

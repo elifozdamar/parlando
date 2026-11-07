@@ -31,6 +31,7 @@ Option).
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import plistlib
 import shutil
@@ -47,13 +48,123 @@ LAUNCH_AGENT = Path.home() / "Library" / "LaunchAgents" / f"{BUNDLE_ID}.plist"
 APP_LOG = Path.home() / "Library" / "Logs" / "parlando-app.log"
 
 LANGUAGES = {
-    "Auto (otomatik algıla)": "Auto",
-    "Türkçe": "Turkish",
+    "Auto (detect language)": "Auto",
+    "Turkish": "Turkish",
     "English": "English",
 }
 # Superscript badge shown next to the icon when the language is not the
 # default (Config.language).
 LANGUAGE_BADGES = {"Auto": "ᴬ", "Turkish": "ᵗʳ", "English": "ᵉⁿ"}
+
+TAP_SHORTCUTS = {
+    "Right Option": "alt_r",
+    "Right Command": "cmd_r",
+    "Right Control": "ctrl_r",
+    "Right Shift": "shift_r",
+}
+SETTINGS_FILE = Path.home() / ".config" / "parlando" / "settings.json"
+PREFERENCE_NAMES = ("hotkey", "language", "copy_clipboard", "clipboard_seconds", "send_enter")
+
+
+def parse_hotkey(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("Enter a key combination or a right modifier key.")
+    value = value.strip().lower()
+    for label, key in TAP_SHORTCUTS.items():
+        if value in (label.lower(), key):
+            return key
+    modifiers = {"option": "alt", "alt": "alt", "command": "cmd", "cmd": "cmd",
+                 "control": "ctrl", "ctrl": "ctrl", "shift": "shift"}
+    specials = {"space": "space", "enter": "enter", "return": "enter", "tab": "tab",
+                "escape": "esc", "esc": "esc", "backspace": "backspace",
+                "delete": "delete", "up": "up", "down": "down", "left": "left", "right": "right"}
+    keys = []
+    modifier_count = 0
+    for part in value.split("+"):
+        part = part.strip().removeprefix("<").removesuffix(">")
+        if part in modifiers:
+            keys.append(f"<{modifiers[part]}>")
+            modifier_count += 1
+        elif part in specials:
+            keys.append(f"<{specials[part]}>")
+        elif part.startswith("f") and part[1:].isdigit() and 1 <= int(part[1:]) <= 20:
+            keys.append(f"<{part}>")
+        elif len(part) == 1 and part.isascii() and part.isprintable():
+            keys.append(part)
+        else:
+            raise ValueError("Use a modifier with a key, such as Command+Shift+D, or Right Option.")
+    if modifier_count < 1 or len(keys) - modifier_count != 1 or len(set(keys)) != len(keys):
+        raise ValueError("Use a modifier with one key, such as Command+Shift+D, or Right Option.")
+    return "+".join(keys)
+
+
+def format_hotkey(value: str) -> str:
+    for label, key in TAP_SHORTCUTS.items():
+        if value == key:
+            return label
+    names = {"alt": "Option", "cmd": "Command", "ctrl": "Control"}
+    return " + ".join(names.get(part.strip("<>"), part.strip("<>").title())
+                      for part in value.split("+"))
+
+
+def parse_clipboard_seconds(value) -> float:
+    if isinstance(value, bool):
+        raise ValueError("Enter a number of seconds greater than 0 and at most 3600.")
+    seconds = float(value)
+    if not 0 < seconds <= 3600:
+        raise ValueError("Enter a number of seconds greater than 0 and at most 3600.")
+    return seconds
+
+
+def prompt_setting(title: str, message: str, initial: str) -> str | None:
+    script = '''on run argv
+        set result to display dialog (item 2 of argv) default answer (item 3 of argv) with title (item 1 of argv) buttons {"Cancel", "Save"} default button "Save" cancel button "Cancel"
+        return text returned of result
+    end run'''
+    try:
+        result = subprocess.run(["osascript", "-e", script, "--", title, message, initial],
+                                capture_output=True, text=True, timeout=180)
+    except subprocess.TimeoutExpired:
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def menu_preferences(cfg: engine.Config) -> dict:
+    return {name: getattr(cfg, name) for name in PREFERENCE_NAMES}
+
+
+def load_menu_config(path: Path = SETTINGS_FILE) -> engine.Config:
+    cfg = engine.Config()
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return cfg
+    except (OSError, ValueError) as exc:
+        engine.LOGGER.warning("Could not load menu settings: %s", exc)
+        return cfg
+    if not isinstance(saved, dict):
+        return cfg
+    try:
+        cfg.hotkey = parse_hotkey(saved.get("hotkey"))
+    except ValueError:
+        pass
+    if saved.get("language") in LANGUAGES.values():
+        cfg.language = saved["language"]
+    try:
+        cfg.clipboard_seconds = parse_clipboard_seconds(saved.get("clipboard_seconds"))
+    except (TypeError, ValueError):
+        pass
+    for name in ("copy_clipboard", "send_enter"):
+        if type(saved.get(name)) is bool:
+            setattr(cfg, name, saved[name])
+    return cfg
+
+
+def save_menu_config(cfg: engine.Config, path: Path = SETTINGS_FILE) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(menu_preferences(cfg), indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
 
 # Template icons (black + alpha): macOS recolors them to match the menu bar
 # in light and dark mode. Regenerate with scripts/make_icons.py.
@@ -342,7 +453,7 @@ def _tap_key(eng) -> str:
     key = eng.cfg.hotkey
     if not key:
         return ""
-    return engine.TAP_KEY_LABELS.get(key, key)
+    return engine.TAP_KEY_LABELS.get(key, format_hotkey(key))
 
 
 def describe_status(eng) -> dict:
@@ -443,6 +554,7 @@ def run_menubar() -> int:
             )
             self._icon_state = "idle"
             self._ax_alerted = False
+            self._saved_preferences = None
             self._guard = RelaunchGuard(app_bundle_path())
             self._guard.cleanup()
             # Status block: two text lines (disabled items) and an action
@@ -468,6 +580,10 @@ def run_menubar() -> int:
             self.clipboard_item = rumps.MenuItem(
                 "Copy to clipboard for 3 seconds", callback=self.on_clipboard
             )
+            self.clipboard_duration_item = rumps.MenuItem(
+                "Clipboard duration…", callback=self.on_clipboard_duration
+            )
+            self.hotkey_item = rumps.MenuItem("Change recording hotkey…", callback=self.on_hotkey)
             self.menu = [
                 self.status_item,
                 self.detail_item,
@@ -476,6 +592,8 @@ def run_menubar() -> int:
                 self.toggle_item,
                 self.enter_item,
                 self.clipboard_item,
+                self.clipboard_duration_item,
+                self.hotkey_item,
                 {"Speech model": list(self.model_items.values())},
                 {"Language": list(self.lang_items.values())},
                 {"Vocabulary": [
@@ -535,6 +653,18 @@ def run_menubar() -> int:
                 item.state = int(eng.cfg.language == lang)
             self.clipboard_item.state = int(eng.cfg.copy_clipboard)
             can_switch = eng.status.phase in ("ready", "paused")
+            self.hotkey_item.set_callback(self.on_hotkey if can_switch else None)
+            self.clipboard_duration_item.set_callback(self.on_clipboard_duration if can_switch else None)
+            self._set_title(self.hotkey_item, f"Change recording hotkey ({format_hotkey(eng.cfg.hotkey)})…")
+            self._set_title(self.clipboard_item, f"Copy to clipboard for {eng.cfg.clipboard_seconds:g} seconds")
+            self._set_title(self.clipboard_duration_item, f"Clipboard duration ({eng.cfg.clipboard_seconds:g} seconds)…")
+            preferences = menu_preferences(eng.cfg)
+            if preferences != self._saved_preferences:
+                try:
+                    save_menu_config(eng.cfg)
+                except OSError as exc:
+                    engine.LOGGER.warning("Could not save menu settings: %s", exc)
+                self._saved_preferences = preferences
             for model, item in self.model_items.items():
                 item.state = int(eng.cfg.model == model)
                 item.set_callback(self.on_model if can_switch else None)
@@ -599,6 +729,33 @@ def run_menubar() -> int:
                 if not eng.cfg.copy_clipboard and eng.clipboard is not None:
                     eng.clipboard.restore()
 
+        def on_clipboard_duration(self, _item) -> None:
+            eng = engine_holder.get("engine")
+            if not eng:
+                return
+            value = prompt_setting("Clipboard duration", "How many seconds should the transcript stay on the clipboard?",
+                                   f"{eng.cfg.clipboard_seconds:g}")
+            if value is None:
+                return
+            try:
+                eng.cfg.clipboard_seconds = parse_clipboard_seconds(value)
+            except (TypeError, ValueError) as exc:
+                rumps.alert(title="Invalid clipboard duration", message=str(exc))
+
+        def on_hotkey(self, _item) -> None:
+            eng = engine_holder.get("engine")
+            if not eng:
+                return
+            value = prompt_setting("Recording hotkey",
+                                   "Enter a shortcut, such as Command+Shift+D, or a single key such as Right Option.",
+                                   format_hotkey(eng.cfg.hotkey))
+            if value is None:
+                return
+            try:
+                eng.request_hotkey(parse_hotkey(value))
+            except ValueError as exc:
+                rumps.alert(title="Invalid recording hotkey", message=str(exc))
+
         def on_vocab_add(self, _item) -> None:
             # NOT rumps.Window: in an accessory (menu bar) app its modal can
             # open invisibly BEHIND other windows and freeze the main thread
@@ -660,7 +817,7 @@ def run_menubar() -> int:
 
     def engine_thread() -> None:
         engine._setup_logging()
-        eng = engine.DictationEngine(engine.Config())
+        eng = engine.DictationEngine(load_menu_config())
         engine_holder["engine"] = eng
         try:
             asyncio.run(eng.run())
