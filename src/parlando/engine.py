@@ -866,6 +866,8 @@ class DictationEngine:
         self._stream_restarts = 0
         self.accessibility_missing = False  # read by the menu bar shell
         self._hotkey = None                 # pynput listener, if any
+        self.hotkey_capture = False
+        self._hotkey_resume_at = 0.0
         self.status = Status()              # read by shells (menu bar, tests)
 
     # -- status / logging -----------------------------------------------------
@@ -1001,8 +1003,16 @@ class DictationEngine:
 
     def request_toggle(self) -> None:
         """Thread-safe start/stop from any thread."""
-        if self.loop:
+        if self.loop and not self.hotkey_capture and time.monotonic() >= self._hotkey_resume_at:
             self.loop.call_soon_threadsafe(self.toggle_action)
+
+    def begin_hotkey_capture(self) -> None:
+        self.hotkey_capture = True
+
+    def end_hotkey_capture(self) -> None:
+        self.hotkey_capture = False
+        # The old listener can deliver the captured key's release slightly later.
+        self._hotkey_resume_at = time.monotonic() + 0.3
 
     # -- audio input ----------------------------------------------------------
 

@@ -116,19 +116,6 @@ def parse_clipboard_seconds(value) -> float:
     return seconds
 
 
-def prompt_setting(title: str, message: str, initial: str) -> str | None:
-    script = '''on run argv
-        set result to display dialog (item 2 of argv) default answer (item 3 of argv) with title (item 1 of argv) buttons {"Cancel", "Save"} default button "Save" cancel button "Cancel"
-        return text returned of result
-    end run'''
-    try:
-        result = subprocess.run(["osascript", "-e", script, "--", title, message, initial],
-                                capture_output=True, text=True, timeout=180)
-    except subprocess.TimeoutExpired:
-        return None
-    return result.stdout.strip() if result.returncode == 0 else None
-
-
 def menu_preferences(cfg: engine.Config) -> dict:
     return {name: getattr(cfg, name) for name in PREFERENCE_NAMES}
 
@@ -541,6 +528,8 @@ def describe_status(eng) -> dict:
 def run_menubar() -> int:
     import rumps
 
+    from parlando.menu_controls import MenuControls
+
     engine_holder: dict = {"engine": None}
 
     class ParlandoApp(rumps.App):
@@ -567,7 +556,7 @@ def run_menubar() -> int:
                 "Start recording", callback=self.on_toggle
             )
             self.enter_item = rumps.MenuItem(
-                "Press Enter after each utterance", callback=self.on_enter_mode
+                "Press Enter after each utterance", callback=lambda _item: None
             )
             self.lang_items = {
                 asr_name: rumps.MenuItem(label, callback=self.on_language)
@@ -578,12 +567,9 @@ def run_menubar() -> int:
                 for label, model in engine.SPEECH_MODELS.items()
             }
             self.clipboard_item = rumps.MenuItem(
-                "Copy to clipboard for 3 seconds", callback=self.on_clipboard
+                "Copy to clipboard", callback=lambda _item: None
             )
-            self.clipboard_duration_item = rumps.MenuItem(
-                "Clipboard duration…", callback=self.on_clipboard_duration
-            )
-            self.hotkey_item = rumps.MenuItem("Change recording hotkey…", callback=self.on_hotkey)
+            self.hotkey_item = rumps.MenuItem("Change hotkey", callback=lambda _item: None)
             self.menu = [
                 self.status_item,
                 self.detail_item,
@@ -592,7 +578,6 @@ def run_menubar() -> int:
                 self.toggle_item,
                 self.enter_item,
                 self.clipboard_item,
-                self.clipboard_duration_item,
                 self.hotkey_item,
                 {"Speech model": list(self.model_items.values())},
                 {"Language": list(self.lang_items.values())},
@@ -606,6 +591,9 @@ def run_menubar() -> int:
                 rumps.MenuItem("Open log file", callback=self.on_log),
                 rumps.MenuItem("Quit", callback=self.on_quit),
             ]
+            self.controls = MenuControls.alloc().init()
+            self.controls.get_engine = lambda: engine_holder.get("engine")
+            self.controls.attach(self.enter_item, self.clipboard_item, self.hotkey_item, self.menu._menu)
             self._set_hidden(self.action_item, True)
             self._set_hidden(self.detail_item, True)
             # UI updates must happen on the main thread: polling engine state
@@ -651,13 +639,8 @@ def run_menubar() -> int:
                 )
             for lang, item in self.lang_items.items():
                 item.state = int(eng.cfg.language == lang)
-            self.clipboard_item.state = int(eng.cfg.copy_clipboard)
             can_switch = eng.status.phase in ("ready", "paused")
-            self.hotkey_item.set_callback(self.on_hotkey if can_switch else None)
-            self.clipboard_duration_item.set_callback(self.on_clipboard_duration if can_switch else None)
-            self._set_title(self.hotkey_item, f"Change recording hotkey ({format_hotkey(eng.cfg.hotkey)})…")
-            self._set_title(self.clipboard_item, f"Copy to clipboard for {eng.cfg.clipboard_seconds:g} seconds")
-            self._set_title(self.clipboard_duration_item, f"Clipboard duration ({eng.cfg.clipboard_seconds:g} seconds)…")
+            self.controls.refresh()
             preferences = menu_preferences(eng.cfg)
             if preferences != self._saved_preferences:
                 try:
@@ -696,12 +679,6 @@ def run_menubar() -> int:
             if eng:
                 eng.request_toggle()
 
-        def on_enter_mode(self, item) -> None:
-            eng = engine_holder["engine"]
-            if eng:
-                eng.cfg.send_enter = not eng.cfg.send_enter
-                item.state = eng.cfg.send_enter
-
         def on_language(self, item) -> None:
             eng = engine_holder.get("engine")
             if not eng:
@@ -721,40 +698,6 @@ def run_menubar() -> int:
                     if menu_item is item:
                         eng.request_model(model)
                         break
-
-        def on_clipboard(self, _item) -> None:
-            eng = engine_holder.get("engine")
-            if eng:
-                eng.cfg.copy_clipboard = not eng.cfg.copy_clipboard
-                if not eng.cfg.copy_clipboard and eng.clipboard is not None:
-                    eng.clipboard.restore()
-
-        def on_clipboard_duration(self, _item) -> None:
-            eng = engine_holder.get("engine")
-            if not eng:
-                return
-            value = prompt_setting("Clipboard duration", "How many seconds should the transcript stay on the clipboard?",
-                                   f"{eng.cfg.clipboard_seconds:g}")
-            if value is None:
-                return
-            try:
-                eng.cfg.clipboard_seconds = parse_clipboard_seconds(value)
-            except (TypeError, ValueError) as exc:
-                rumps.alert(title="Invalid clipboard duration", message=str(exc))
-
-        def on_hotkey(self, _item) -> None:
-            eng = engine_holder.get("engine")
-            if not eng:
-                return
-            value = prompt_setting("Recording hotkey",
-                                   "Enter a shortcut, such as Command+Shift+D, or a single key such as Right Option.",
-                                   format_hotkey(eng.cfg.hotkey))
-            if value is None:
-                return
-            try:
-                eng.request_hotkey(parse_hotkey(value))
-            except ValueError as exc:
-                rumps.alert(title="Invalid recording hotkey", message=str(exc))
 
         def on_vocab_add(self, _item) -> None:
             # NOT rumps.Window: in an accessory (menu bar) app its modal can
@@ -807,6 +750,8 @@ def run_menubar() -> int:
             subprocess.run(["open", str(engine.LOG_PATH)], check=False)
 
         def on_quit(self, _item) -> None:
+            self.controls.end_capture()
+            self.controls.save()
             eng = engine_holder.get("engine")
             if eng and eng.clipboard is not None:
                 eng.clipboard.restore()
