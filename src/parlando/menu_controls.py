@@ -19,10 +19,10 @@ from AppKit import (
     NSView,
 )
 from Foundation import NSRunLoopCommonModes
-from pynput import keyboard
 
 from parlando import engine
 from parlando.hotkeys import CANCEL_CAPTURE, HotkeyCapture, shortcut_symbols
+from parlando.keyboard_listener import Listener
 from parlando.menubar import format_hotkey, parse_clipboard_seconds, save_menu_config
 
 
@@ -194,7 +194,7 @@ class MenuControls(NSObject):
         # NSMenu tracks keyboard events outside the application's normal local
         # NSEvent monitor. Use the same system event tap as the dictation hotkey,
         # and deliver results on the main thread in the menu's tracking mode.
-        self.capture_listener = keyboard.Listener(darwin_intercept=self.intercept_event)
+        self.capture_listener = Listener(darwin_intercept=self.intercept_event)
         self.capture_listener.start()
         self.refresh()
 

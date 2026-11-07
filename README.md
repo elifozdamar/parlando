@@ -26,6 +26,9 @@ audio never leaves your machine.
   or right Command, Option, Control or Shift key. **Copy to clipboard** has a checkbox and an
   inline duration field, such as `5` seconds. Enter mode also has a checkbox.
   The hotkey, clipboard duration, copy toggle, language and Enter preference are saved locally.
+- **macOS keyboard stability** — Parlando's listener skips pynput 1.8.2's unused
+  background Carbon layout lookup, which can cause a native `SIGTRAP` during
+  startup or shortcut changes. The workaround is in the package and survives reinstalling.
 - **Voice commands** — "nokta", "virgül", "soru işareti", "yeni satır",
   "gönder" (presses Enter); the English set ("period", "comma", "question
   mark", "new line", "send") is active with `--language English`.

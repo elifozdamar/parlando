@@ -47,6 +47,7 @@ def test_left_modifier_capture_persists_and_drives_tap_listener(code, flag, key,
 
     keyboard = SimpleNamespace(Key=SimpleNamespace(**{key: key}), Listener=listener)
     monkeypatch.setitem(sys.modules, "pynput", SimpleNamespace(keyboard=keyboard))
+    monkeypatch.setitem(sys.modules, "parlando.keyboard_listener", SimpleNamespace(Listener=listener, GlobalHotKeys=listener))
     toggles = []
     eng.request_toggle = lambda: toggles.append(True)
     eng._setup_hotkey()

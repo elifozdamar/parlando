@@ -2,6 +2,10 @@
 
 ## 0.6.2+local
 
+- Avoid pynput's unused background Carbon keyboard-layout lookup on macOS,
+  which can abort Python in `TSMGetInputSourceProperty`. Apply the workaround
+  to modifier taps, shortcut combinations and the menu's shortcut recorder;
+  pin pynput to the reviewed 1.8.2 implementation.
 - Fix shortcut recording for left Command, Option, Control and Shift taps;
   preserve the selected side when saving and listening for the shortcut.
 - Capture shortcut keys through the system event tap during menu tracking,

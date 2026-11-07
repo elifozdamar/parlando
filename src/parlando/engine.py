@@ -1537,6 +1537,8 @@ class DictationEngine:
         try:
             from pynput import keyboard
 
+            from parlando.keyboard_listener import GlobalHotKeys, Listener
+
             action = (
                 "start/stop recording" if self.cfg.mode == "record"
                 else "pause/resume"
@@ -1553,10 +1555,10 @@ class DictationEngine:
                     if tap.release(key == target):
                         self.request_toggle()
 
-                hk = keyboard.Listener(on_press=on_press, on_release=on_release)
+                hk = Listener(on_press=on_press, on_release=on_release)
                 hk.start()
             else:
-                hk = keyboard.GlobalHotKeys({name: self.request_toggle})
+                hk = GlobalHotKeys({name: self.request_toggle})
                 hk.start()
             self._info(f"Hotkey ready: {hotkey_label(name)} ({action})")
             return hk

@@ -45,7 +45,7 @@ dependencies = [
     "rich",
     "pyobjc-framework-Quartz",
     "pyobjc-framework-ApplicationServices",
-    "pynput",
+    "pynput==1.8.2",  # Native listener workaround relies on this reviewed implementation.
     "onnxruntime",
     "rumps",
 ]

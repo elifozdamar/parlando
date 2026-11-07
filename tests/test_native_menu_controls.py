@@ -30,7 +30,7 @@ def test_event_tap_delivers_shortcuts_during_menu_tracking(codes, expected, monk
         listener_calls.append(kwargs)
         return SimpleNamespace(start=lambda: None, stop=lambda: listener_calls.append(threading.get_ident()))
 
-    monkeypatch.setattr(menu_controls.keyboard, "Listener", make_listener)
+    monkeypatch.setattr(menu_controls, "Listener", make_listener)
     eng = SimpleNamespace(cfg=engine.Config(), status=SimpleNamespace(phase="ready"), clipboard=None,
                           begin_hotkey_capture=lambda: None, end_hotkey_capture=lambda: None)
     eng.request_hotkey = lambda key: setattr(eng.cfg, "hotkey", key)
