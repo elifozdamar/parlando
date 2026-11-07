@@ -3,8 +3,10 @@
 # NSEvent's device-independent modifier flags and virtual key codes.
 MODIFIERS = ((1 << 18, "ctrl"), (1 << 19, "alt"), (1 << 17, "shift"), (1 << 20, "cmd"))
 MODIFIER_MASK = sum(flag for flag, _ in MODIFIERS)
-RIGHT_MODIFIERS = {54: (1 << 20, "cmd_r"), 60: (1 << 17, "shift_r"),
-                   61: (1 << 19, "alt_r"), 62: (1 << 18, "ctrl_r")}
+MODIFIER_KEYS = {54: (1 << 20, "cmd_r"), 55: (1 << 20, "cmd_l"),
+                 56: (1 << 17, "shift_l"), 60: (1 << 17, "shift_r"),
+                 58: (1 << 19, "alt_l"), 61: (1 << 19, "alt_r"),
+                 59: (1 << 18, "ctrl_l"), 62: (1 << 18, "ctrl_r")}
 SPECIAL_KEYS = {36: "enter", 48: "tab", 49: "space", 51: "backspace", 53: "esc",
                 76: "enter", 117: "delete", 123: "left", 124: "right", 125: "down", 126: "up",
                 122: "f1", 120: "f2", 99: "f3", 118: "f4", 96: "f5", 97: "f6", 98: "f7",
@@ -18,15 +20,15 @@ class HotkeyCapture:
         self.pending = None
 
     def flags_changed(self, code: int, flags: int) -> str | None:
-        right = RIGHT_MODIFIERS.get(code)
+        modifier = MODIFIER_KEYS.get(code)
         if self.pending is not None:
             previous_code, previous_flag, key = self.pending
             if code == previous_code and not flags & previous_flag:
                 self.pending = None
                 return key if not flags & MODIFIER_MASK else None
         self.pending = None
-        if right and flags & MODIFIER_MASK == right[0]:
-            self.pending = (code, right[0], right[1])
+        if modifier and flags & MODIFIER_MASK == modifier[0]:
+            self.pending = (code, modifier[0], modifier[1])
         return None
 
     def key_down(self, code: int, characters: str, flags: int) -> str | None:
@@ -47,9 +49,11 @@ class HotkeyCapture:
 
 
 def shortcut_symbols(value: str) -> str:
-    right = {"alt_r": "Right ⌥", "cmd_r": "Right ⌘", "ctrl_r": "Right ⌃", "shift_r": "Right ⇧"}
-    if value in right:
-        return right[value]
+    taps = {f"{name}_{suffix}": f"{side} {symbol}"
+            for suffix, side in (("l", "Left"), ("r", "Right"))
+            for name, symbol in (("alt", "⌥"), ("cmd", "⌘"), ("ctrl", "⌃"), ("shift", "⇧"))}
+    if value in taps:
+        return taps[value]
     symbols = {"ctrl": "⌃", "alt": "⌥", "shift": "⇧", "cmd": "⌘",
                "enter": "↩", "space": "Space", "tab": "⇥", "esc": "Esc", "backspace": "⌫",
                "up": "↑", "down": "↓", "left": "←", "right": "→"}

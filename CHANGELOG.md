@@ -2,6 +2,10 @@
 
 ## 0.6.2+local
 
+- Fix shortcut recording for left Command, Option, Control and Shift taps;
+  preserve the selected side when saving and listening for the shortcut.
+- Capture shortcut keys through the system event tap during menu tracking,
+  with main-thread delivery and cleanup on completion, cancellation or menu close.
 - Add inline clipboard and Enter checkboxes, an editable clipboard duration,
   and a keyboard shortcut recorder. Suspend dictation hotkeys during shortcut
   capture; remember menu preferences and use English language-menu labels.

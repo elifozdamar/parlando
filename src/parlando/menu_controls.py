@@ -6,9 +6,9 @@ from AppKit import (
     NSButton,
     NSControlSizeSmall,
     NSEvent,
-    NSEventMaskFlagsChanged,
-    NSEventMaskKeyDown,
+    NSEventTrackingRunLoopMode,
     NSEventTypeFlagsChanged,
+    NSEventTypeKeyDown,
     NSFont,
     NSMenuDidEndTrackingNotification,
     NSNotificationCenter,
@@ -17,6 +17,8 @@ from AppKit import (
     NSTextField,
     NSView,
 )
+from Foundation import NSRunLoopCommonModes
+from pynput import keyboard
 
 from parlando import engine
 from parlando.hotkeys import CANCEL_CAPTURE, HotkeyCapture, shortcut_symbols
@@ -36,7 +38,8 @@ class MenuControls(NSObject):
         if self is None:
             return None
         self.get_engine = lambda: None
-        self.monitor = None
+        self.capture_listener = None
+        self.capture_generation = 0
         self.capturing = False
         self.editing = False
         self.capture = HotkeyCapture()
@@ -166,42 +169,61 @@ class MenuControls(NSObject):
             return
         self.capture = HotkeyCapture()
         self.capturing = True
+        self.capture_generation += 1
         eng.begin_hotkey_capture()
         self.record.setTitle_("Cancel")
         self.current_key.setStringValue_("Press keys…")
         self.current_key.setAccessibilityLabel_("Press a shortcut; Escape cancels")
-        self.monitor = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
-            NSEventMaskKeyDown | NSEventMaskFlagsChanged, self.handle_event)
+        # NSMenu tracks keyboard events outside the application's normal local
+        # NSEvent monitor. Use the same system event tap as the dictation hotkey,
+        # and deliver results on the main thread in the menu's tracking mode.
+        self.capture_listener = keyboard.Listener(darwin_intercept=self.intercept_event)
+        self.capture_listener.start()
         self.refresh()
 
     @objc.python_method
-    def handle_event(self, event):
+    def intercept_event(self, event_type, cg_event):
+        if not self.capturing:
+            return cg_event
+        generation = self.capture_generation
+        if event_type not in (NSEventTypeFlagsChanged, NSEventTypeKeyDown):
+            return None
+        event = NSEvent.eventWithCGEvent_(cg_event)
+        self.performSelectorOnMainThread_withObject_waitUntilDone_modes_(
+            "captureEvent:", [generation, event], False,
+            [NSRunLoopCommonModes, NSEventTrackingRunLoopMode])
+        return None  # Suppress captured keys before macOS dispatches menu commands.
+
+    def captureEvent_(self, payload):
+        generation, event = payload
+        if not self.capturing or generation != self.capture_generation:
+            return
         if event.type() == NSEventTypeFlagsChanged:
             result = self.capture.flags_changed(event.keyCode(), event.modifierFlags())
         else:
             result = self.capture.key_down(event.keyCode(), event.charactersByApplyingModifiers_(0) or "",
                                            event.modifierFlags())
-            if result is None:
-                self.current_key.setStringValue_("Use a modifier")
         if result == CANCEL_CAPTURE:
             self.end_capture()
-        elif result is not None:
+        elif result:
             eng = self.get_engine()
             if eng:
                 eng.request_hotkey(result)
             self.end_capture()
-        return None  # Captured shortcuts must not activate menu items or app commands.
+        elif event.type() == NSEventTypeKeyDown:
+            self.current_key.setStringValue_("Use a modifier")
 
     @objc.python_method
     def end_capture(self):
-        if self.monitor is not None:
-            NSEvent.removeMonitor_(self.monitor)
-            self.monitor = None
+        if self.capture_listener is not None:
+            self.capture_listener.stop()
+            self.capture_listener = None
         if self.capturing:
             eng = self.get_engine()
             if eng:
                 eng.end_hotkey_capture()
         self.capturing = False
+        self.capture_generation += 1
         self.record.setTitle_("Record")
         self.refresh()
 

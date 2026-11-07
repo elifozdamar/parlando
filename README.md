@@ -22,7 +22,8 @@ audio never leaves your machine.
   to detect the spoken language, or select Turkish / English to fix it.
   Switching needs no model reload. Menu language selection is remembered across restarts.
 - **Menu preferences** — click **Record** beside **Change hotkey**, then press
-  your shortcut (Escape cancels). **Copy to clipboard** has a checkbox and an
+  your shortcut (Escape cancels). A single modifier tap can use either the left
+  or right Command, Option, Control or Shift key. **Copy to clipboard** has a checkbox and an
   inline duration field, such as `5` seconds. Enter mode also has a checkbox.
   The hotkey, clipboard duration, copy toggle, language and Enter preference are saved locally.
 - **Voice commands** — "nokta", "virgül", "soru işareti", "yeni satır",

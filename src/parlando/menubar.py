@@ -57,6 +57,10 @@ LANGUAGES = {
 LANGUAGE_BADGES = {"Auto": "ᴬ", "Turkish": "ᵗʳ", "English": "ᵉⁿ"}
 
 TAP_SHORTCUTS = {
+    "Left Option": "alt_l",
+    "Left Command": "cmd_l",
+    "Left Control": "ctrl_l",
+    "Left Shift": "shift_l",
     "Right Option": "alt_r",
     "Right Command": "cmd_r",
     "Right Control": "ctrl_r",

@@ -13,7 +13,8 @@ from parlando.clipboard import TemporaryClipboard
 
 
 @pytest.mark.parametrize("language, expected", [("Turkish", "turkish"), ("Auto", None)])
-def test_whisper_receives_audio_language_and_transcription_task(language, expected):
+def test_whisper_receives_audio_language_and_transcription_task(language, expected, tmp_path, monkeypatch):
+    monkeypatch.setattr(engine, "VOCAB_FILE", tmp_path / "vocabulary.txt")
     calls = []
     eng = engine.DictationEngine(engine.Config(language=language, vocab="BigQuery", normalize=False))
     eng.model = "/cached/whisper"

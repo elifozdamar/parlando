@@ -744,6 +744,10 @@ def make_typist():
 
 
 TAP_KEY_LABELS = {
+    "alt_l": "left ⌥ Option",
+    "cmd_l": "left ⌘ Command",
+    "ctrl_l": "left ⌃ Control",
+    "shift_l": "left ⇧ Shift",
     "alt_r": "right ⌥ Option",
     "cmd_r": "right ⌘ Command",
     "ctrl_r": "right ⌃ Control",
